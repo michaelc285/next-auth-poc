@@ -2,7 +2,11 @@ import {
   getServerSession,
   type DefaultSession,
   type NextAuthOptions,
+  type DefaultUser,
+
 } from "next-auth";
+import { JWT } from "next-auth/jwt"
+
 import CredentialsProvider from "next-auth/providers/credentials"
 
 /**
@@ -15,15 +19,31 @@ declare module "next-auth" {
   interface Session extends DefaultSession {
     user: {
       id: string;
+      auth: any;
       // ...other properties
       // role: UserRole;
     } & DefaultSession["user"];
   }
 
+  interface User extends DefaultUser {
+    accessToken: string,
+  }
   // interface User {
   //   // ...other properties
   //   // role: UserRole;
   // }
+
+}
+
+declare module "next-auth/jwt" {
+  /** Returned by the `jwt` callback and `getToken`, when using JWT sessions */
+  interface JWT {
+    /** OpenID ID Token */
+    auth: {
+      accessTokenExpiresAt: number,
+      refreshToken: string
+    }
+  }
 }
 
 /**
@@ -45,9 +65,9 @@ export const authOptions: NextAuthOptions = {
         return {
           ...token,
           accessToken: user?.accessToken ?? "",
-          auth: {...user, accessTokenExpiresAt: accessTokenExp},
+          auth: { ...user, accessTokenExpiresAt: accessTokenExp },
         }
-      } else if ((Date.now()) < (token.auth.accessTokenExpiresAt as number) * 1000) {
+      } else if ((Date.now()) < (token?.auth.accessTokenExpiresAt as number) * 1000) {
         return token;
       } else {
         console.log("---REFRESH TOKEN START---")
@@ -59,7 +79,7 @@ export const authOptions: NextAuthOptions = {
           const result = {
             ...token,
             accessToken: res.accessToken,
-            auth: {...res, accessTokenExpiresAt: accessTokenExp}
+            auth: { ...res, accessTokenExpiresAt: accessTokenExp }
           }
           console.log(result);
           console.log("---REFRESH TOKEN END----")
