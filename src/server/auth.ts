@@ -3,12 +3,7 @@ import {
   type DefaultSession,
   type NextAuthOptions,
 } from "next-auth";
-import DiscordProvider from "next-auth/providers/discord";
 import CredentialsProvider from "next-auth/providers/credentials"
-
-import { env } from "~/env.mjs";
-import { getToken } from "next-auth/jwt";
-import { userAgent } from "next/server";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
@@ -40,15 +35,37 @@ export const authOptions: NextAuthOptions = {
   debug: true,
   callbacks: {
     async jwt(ctx) {
-      console.log("---------JWT----------");
-      console.log(ctx);
-      console.log("---------END JWT----------");
+      // console.log("---------JWT----------");
+      // console.log(ctx);
+      // console.log("---------END JWT----------");
       let { token, user } = ctx;
       if (user) {
-        token = {
+        const accessTokenPayload = decode(user?.accessToken ?? "");
+        const accessTokenExp = accessTokenPayload.exp;
+        return {
           ...token,
           accessToken: user?.accessToken ?? "",
-          auth: user
+          auth: {...user, accessTokenExpiresAt: accessTokenExp},
+        }
+      } else if ((Date.now()) < (token.auth.accessTokenExpiresAt as number) * 1000) {
+        return token;
+      } else {
+        console.log("---REFRESH TOKEN START---")
+        try {
+          const res = await refreshToken(token?.email ?? "", token?.auth?.refreshToken ?? "");
+          if (!res) throw Error("REFRESH TOKEN EXPIRED");
+          const accessTokenPayload = decode(res?.accessToken ?? "");
+          const accessTokenExp = accessTokenPayload.exp;
+          const result = {
+            ...token,
+            accessToken: res.accessToken,
+            auth: {...res, accessTokenExpiresAt: accessTokenExp}
+          }
+          console.log(result);
+          console.log("---REFRESH TOKEN END----")
+          return result
+        } catch (err) {
+          console.error(err);
         }
       }
       return token;
@@ -59,7 +76,7 @@ export const authOptions: NextAuthOptions = {
       // console.log(ctx);
       // console.log("---------END SESSION----------");
       const { session, token } = ctx;
-      console.log(session);
+      // console.log(session);
       return {
         ...session,
         auth: token
@@ -68,10 +85,10 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
-    maxAge: 160
+    maxAge: 600
   },
   jwt: {
-    maxAge: 160
+    maxAge: 30 // exp - iat
   },
   providers: [
     CredentialsProvider({
@@ -113,6 +130,21 @@ const login = async (email: string) => {
   if (res.ok) return await res.json();
   return null;
 }
+
+const refreshToken = async (email: string, refreshToken: string) => {
+  const res = await fetch("http://localhost:8081/refresh", {
+    method: 'POST',
+    body: JSON.stringify({
+      email: email,
+      token: refreshToken
+    }),
+    headers: { "Content-Type": "application/json" }
+  })
+  if (res.ok) return await res.json();
+  return null;
+}
+
+const decode = (token: string) => JSON.parse(Buffer.from(token.split(".")[1], 'base64').toString())
 
 /**
  * Wrapper for `getServerSession` so that you don't need to import the `authOptions` in every file.
