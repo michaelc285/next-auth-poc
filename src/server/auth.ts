@@ -4,6 +4,7 @@ import {
   type NextAuthOptions,
 } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
+import CredentialsProvider from "next-auth/providers/credentials"
 
 import { env } from "~/env.mjs";
 
@@ -35,28 +36,79 @@ declare module "next-auth" {
  */
 export const authOptions: NextAuthOptions = {
   callbacks: {
-    session: ({ session, token }) => ({
-      ...session,
-      user: {
-        ...session.user,
-        id: token.sub,
-      },
-    }),
+    async jwt({ token, account, session, user }) {
+      // Persist the OAuth access_token to the token right after signin
+      if (account) token.accessToken = account.accessToken
+      // if (Date.now() < token.accessToken) {
+      //   const res = await fetch("http://localhost:8081/login", {
+      //     method: 'POST',
+      //     body: JSON.stringify({
+      //       email: account
+      //     }),
+      //     headers: { "Content-Type": "application/json" }
+      //   })
+      // }
+      console.log("---------JWT----------");
+      console.log(token);
+      console.log(account);
+      console.log(session);
+      console.log(user);
+      console.log("---------END JWT----------");
+      return token
+    },
+    async session({ session, token, user }) {
+      // Send properties to the client, like an access_token from a provider.
+      console.log("---------SESSION----------");
+      console.log(session);
+      console.log(token);
+      console.log(user);
+      console.log("---------END SESSION----------");
+      return {
+        ...session,
+        accessToken: token.accessToken
+      }
+    }
+  },
+  session: {
+    maxAge: 60
   },
   providers: [
-    DiscordProvider({
-      clientId: env.DISCORD_CLIENT_ID,
-      clientSecret: env.DISCORD_CLIENT_SECRET,
-    }),
-    /**
-     * ...add more providers here.
-     *
-     * Most other providers require a bit more work than the Discord provider. For example, the
-     * GitHub provider requires you to add the `refresh_token_expires_in` field to the Account
-     * model. Refer to the NextAuth.js docs for the provider you want to use. Example:
-     *
-     * @see https://next-auth.js.org/providers/github
-     */
+    CredentialsProvider({
+      // The name to display on the sign in form (e.g. 'Sign in with...')
+      name: 'Credentials',
+      // The credentials is used to generate a suitable form on the sign in page.
+      // You can specify whatever fields you are expecting to be submitted.
+      // e.g. domain, username, password, 2FA token, etc.
+      // You can pass any HTML attribute to the <input> tag through the object.
+      credentials: {
+        username: { label: "Username", type: "text", placeholder: "jsmith" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials, req) {
+        // You need to provide your own logic here that takes the credentials
+        // submitted and returns either a object representing a user or value
+        // that is false/null if the credentials are invalid.
+        // e.g. return { id: 1, name: 'J Smith', email: 'jsmith@example.com' }
+        // You can also use the `req` object to obtain additional parameters
+        // (i.e., the request IP address)
+        const res = await fetch("http://localhost:8081/login", {
+          method: 'POST',
+          body: JSON.stringify({
+            email: credentials?.username
+          }),
+          headers: { "Content-Type": "application/json" }
+        })
+
+        const user = await res.json()
+        console.log(user);
+        // If no error and we have user data, return it
+        if (res.ok && user) {
+          return user
+        }
+        // Return null if user data could not be retrieved
+        return null
+      }
+    })
   ],
 };
 
