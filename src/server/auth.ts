@@ -164,7 +164,7 @@ const refreshToken = async (email: string, refreshToken: string) => {
   return null;
 }
 
-const decode = (token: string) => JSON.parse(Buffer.from(token.split(".")[1], 'base64').toString())
+const decode = (token: string) => JSON.parse(Buffer.from(token.split(".")[1] ?? "", 'base64').toString())
 
 /**
  * Wrapper for `getServerSession` so that you don't need to import the `authOptions` in every file.
